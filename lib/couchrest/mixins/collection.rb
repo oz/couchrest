@@ -42,7 +42,12 @@ module CouchRest
         #
         # Defaults are used if these options are not specified.
         def paginated_each(options, &block)
-          proxy = create_collection_proxy(options)
+          search = options.delete(:search)
+          unless search == true
+            proxy = create_collection_proxy(options)
+          else
+            proxy = create_search_collection_proxy(options)
+          end
           proxy.paginated_each(options, &block)
         end
 
@@ -71,6 +76,11 @@ module CouchRest
           CollectionProxy.new(@database, design_doc, view_name, view_options, self)
         end
 
+        def create_search_collection_proxy(options)
+          design_doc, search_name, search_options = parse_search_options(options)
+          CollectionProxy.new(@database, design_doc, search_name, search_options, self, :search)
+        end
+
         def parse_view_options(options)
           design_doc = options.delete(:design_doc)
           raise ArgumentError, 'design_doc is required' if design_doc.nil?
@@ -85,6 +95,18 @@ module CouchRest
 
           [design_doc, view_name, view_options]
         end
+
+        def parse_search_options(options)
+          design_doc = options.delete(:design_doc)
+          raise ArgumentError, 'design_doc is required' if design_doc.nil?
+
+          search_name = options.delete(:view_name)
+          raise ArgumentError, 'search_name is required' if search_name.nil?
+
+         search_options = options.clone
+          [design_doc, search_name, search_options]
+        end
+
       end
 
       class CollectionProxy
@@ -213,7 +235,7 @@ module CouchRest
 
         def pagination_options(page, per_page)
           view_options = @view_options.clone
-          if @last_key && @last_docid && @last_page == page - 1
+          if @query_type == :view && @last_key && @last_docid && @last_page == page - 1
             view_options.delete(:key)
             options = { :startkey => @last_key, :startkey_docid => @last_docid, :limit => per_page, :skip => 1 }
           else
